@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Hotel yes/no</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="desk">
+      <header>
+        <p class="eyebrow">Local graph</p>
+        <h1>Hotel yes/no</h1>
+        <p class="lede">
+          Pick a hotel and ask a yes/no question. Neo4j loads that hotel’s
+          rooms, amenities, policies, and services. Jev answers only from those
+          facts.
+        </p>
+      </header>
+
+      <form id="ask-form">
+        <label>
+          Hotel
+          <select id="hotel" name="hotel" required>
+            <option value="">Loading hotels…</option>
+          </select>
+        </label>
+        <label>
+          Question
+          <input
+            id="question"
+            name="question"
+            type="text"
+            autocomplete="off"
+            placeholder="Does this hotel have babysitting?"
+            required
+          />
+        </label>
+        <button id="ask" type="submit">Ask</button>
+      </form>
+
+      <p id="status" class="status" role="status"></p>
+      <section id="result" class="result" hidden></section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

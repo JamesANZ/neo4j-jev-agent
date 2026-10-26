@@ -1,4 +1,5 @@
-import type { FactSheet, HotelSummary } from "./facts.js";
+import type { Evidence, HotelSummary } from "./facts.js";
+import { retrievalFocus } from "./focus.js";
 import type { GraphStore } from "./graph.js";
 import {
   jevState,
@@ -21,7 +22,7 @@ export type AskSuccess = {
   confidence: number;
   needsReview: boolean;
   model: string;
-  factSheet: FactSheet;
+  evidence: Evidence;
 };
 
 export type AskFailure = {
@@ -39,7 +40,7 @@ export async function listHotels(
 }
 
 export async function askHotel(
-  graph: Pick<GraphStore, "getFactSheet">,
+  graph: Pick<GraphStore, "getEvidence">,
   judge: JevJudge,
   input: AskInput,
 ): Promise<AskResult> {
@@ -57,9 +58,10 @@ export async function askHotel(
     return { ok: false, status: 400, error: refusal };
   }
 
-  let factSheet: FactSheet | null;
+  const focus = retrievalFocus(question);
+  let evidence: Evidence | null;
   try {
-    factSheet = await graph.getFactSheet(hotelName);
+    evidence = await graph.getEvidence(hotelName, focus);
   } catch (error) {
     return {
       ok: false,
@@ -68,23 +70,23 @@ export async function askHotel(
     };
   }
 
-  if (!factSheet) {
+  if (!evidence) {
     return { ok: false, status: 404, error: "That hotel is not in the graph." };
   }
 
   try {
     const judgment = await judge.judge({
-      state: jevState(question, factSheet),
+      state: jevState(question, evidence),
     });
     return {
       ok: true,
-      hotelName: factSheet.name,
+      hotelName: evidence.name,
       question,
       verdict: judgment.verdict,
       confidence: judgment.confidence,
       needsReview: judgment.needsReview,
       model: judgment.model,
-      factSheet,
+      evidence,
     };
   } catch (error) {
     if (error instanceof MissingApiKeyError) {

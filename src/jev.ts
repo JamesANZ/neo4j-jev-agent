@@ -1,6 +1,6 @@
 import { choice, TypeSafeClient, TypeSafeError } from "@typesafe-ai/sdk";
 import type { AppConfig } from "./config.js";
-import { RECORD_NOTE, type FactSheet } from "./facts.js";
+import type { Evidence } from "./facts.js";
 
 export const REVIEW_CONFIDENCE = 0.6;
 
@@ -16,8 +16,7 @@ export type Judgment = {
 
 export type JevState = {
   guest_question: string;
-  record_note: string;
-  hotel: FactSheet;
+  hotel: Evidence;
 };
 
 export type JevRequest = {
@@ -32,16 +31,15 @@ const INSTRUCTIONS =
   "Using only the hotel record in the state, does it support a yes answer to the guest's question?";
 
 const CRITERIA = {
-  yes: "The record states the fact the guest asked about. For a guest count, at least one room has max_occupancy greater than or equal to that number.",
-  no: "The record covers this topic and the fact is absent or contradicts the question. Amenity and service lists are complete, so a missing facility or service is a no. For a guest count, no is correct when every room's max_occupancy is below the number asked.",
+  yes: "A retrieved record states the requested fact. For guest_count, at least one room has max_occupancy greater than or equal to that number.",
+  no: "The retrieved records contradict the question, or a searched list is empty. An empty amenity, service, or policy list means the hotel record has no match.",
   not_in_record:
-    "The record does not contain the kind of fact needed to answer, including live room availability, current prices beyond the stored rate range, or a rule that was never stored.",
+    "The question needs a fact that was not retrieved, including live room availability.",
 } as const;
 
-export function jevState(question: string, hotel: FactSheet): JevState {
+export function jevState(question: string, hotel: Evidence): JevState {
   return {
     guest_question: question.trim(),
-    record_note: RECORD_NOTE,
     hotel,
   };
 }

@@ -52,7 +52,7 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 export function createApp(deps: {
   graph: Pick<
     ReturnType<typeof createGraphStore>,
-    "listHotels" | "getFactSheet"
+    "listHotels" | "getEvidence"
   >;
   judge: TypeSafeJevJudge | { judge: TypeSafeJevJudge["judge"] };
 }) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { askHotel } from "../src/ask.js";
-import type { FactSheet } from "../src/facts.js";
+import type { Evidence } from "../src/facts.js";
+import type { RetrievalFocus } from "../src/focus.js";
 import {
   jevState,
   judgmentFromChoice,
@@ -9,31 +10,20 @@ import {
 } from "../src/jev.js";
 import { YES_NO_REFUSAL } from "../src/questions.js";
 
-const hotel: FactSheet = {
+const evidence: Evidence = {
   name: "AnyCompany Cairo Nile View",
-  address: "789 Corniche el-Nil, Cairo 11519, Egypt",
-  guest_rating: 4.6,
-  total_rooms: 120,
-  email: null,
-  phone: null,
-  rooms: [
-    {
-      type: "Standard Room",
-      bed_configuration: "One queen bed",
-      max_occupancy: 2,
-      min_rate: 90,
-      max_rate: 140,
-    },
-  ],
-  amenities: ["Outdoor swimming pool", "Spa"],
-  policies: [{ name: "Cancellation", description: "Cancel 48 hours ahead." }],
+  note: "amenities and services are only the records whose name or description contains the question terms. An empty list means this hotel record has no match.",
+  amenities: [],
   services: [],
 };
 
-function graphWith(sheet: FactSheet | null) {
+function graphWith(found: Evidence | null) {
+  const calls: RetrievalFocus[] = [];
   return {
-    async getFactSheet(name: string) {
-      return sheet && sheet.name === name ? sheet : null;
+    calls,
+    async getEvidence(name: string, focus: RetrievalFocus) {
+      calls.push(focus);
+      return found && found.name === name ? found : null;
     },
   };
 }
@@ -69,8 +59,8 @@ describe("askHotel", () => {
       },
     };
 
-    const result = await askHotel(graphWith(hotel), judge, {
-      hotelName: hotel.name,
+    const result = await askHotel(graphWith(evidence), judge, {
+      hotelName: evidence.name,
       question: "Which amenities does this hotel have?",
     });
 
@@ -78,7 +68,7 @@ describe("askHotel", () => {
     expect(calls).toHaveLength(0);
   });
 
-  it("sends the fact sheet to Jev and returns the verdict", async () => {
+  it("sends only the retrieved evidence to Jev", async () => {
     const calls: JevRequest[] = [];
     const judge: JevJudge = {
       async judge(request) {
@@ -86,21 +76,28 @@ describe("askHotel", () => {
         return judgmentFromChoice("no", 0.88, "jev-test");
       },
     };
+    const graph = graphWith(evidence);
 
-    const result = await askHotel(graphWith(hotel), judge, {
-      hotelName: hotel.name,
+    const result = await askHotel(graph, judge, {
+      hotelName: evidence.name,
       question: "Does this hotel have babysitting?",
     });
 
+    expect(graph.calls[0]).toMatchObject({
+      kind: "facility",
+      terms: ["babysit"],
+      includeRooms: false,
+      includePolicies: false,
+    });
     expect(calls).toEqual([
-      { state: jevState("Does this hotel have babysitting?", hotel) },
+      { state: jevState("Does this hotel have babysitting?", evidence) },
     ]);
     expect(result).toMatchObject({
       ok: true,
       verdict: "no",
       confidence: 0.88,
       needsReview: false,
-      factSheet: hotel,
+      evidence,
     });
   });
 

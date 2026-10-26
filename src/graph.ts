@@ -1,15 +1,16 @@
 import neo4j, { type Driver } from "neo4j-driver";
 import type { AppConfig } from "./config.js";
+import type { RetrievalFocus } from "./focus.js";
 import {
-  normalizeFactSheet,
   normalizeHotelSummary,
-  type FactSheet,
+  shapeEvidence,
+  type Evidence,
   type HotelSummary,
 } from "./facts.js";
 
 export type GraphStore = {
   listHotels(): Promise<HotelSummary[]>;
-  getFactSheet(name: string): Promise<FactSheet | null>;
+  getEvidence(name: string, focus: RetrievalFocus): Promise<Evidence | null>;
   close(): Promise<void>;
 };
 
@@ -20,35 +21,42 @@ RETURN hotel.name AS name, hotel.address AS address
 ORDER BY hotel.name
 `;
 
-const FACT_SHEET = `
+const EVIDENCE = `
 MATCH (hotel:Hotel {name: $name})
 RETURN hotel {
   .name,
-  .address,
-  .guest_rating,
-  .total_rooms,
-  .email,
-  .phone,
-  rooms: [(hotel)-[:HAS_ROOM]->(room:Room) | room {
+  address: CASE WHEN $includeAddress THEN hotel.address ELSE null END,
+  guest_rating: CASE WHEN $includeRating THEN hotel.guest_rating ELSE null END,
+  total_rooms: CASE WHEN $includeTotalRooms THEN hotel.total_rooms ELSE null END,
+  email: CASE WHEN $includeEmail THEN hotel.email ELSE null END,
+  phone: CASE WHEN $includePhone THEN hotel.phone ELSE null END,
+  rooms: [(hotel)-[:HAS_ROOM]->(room:Room) WHERE $includeRooms | room {
     .type,
     .bed_configuration,
     .max_occupancy,
     .min_rate,
     .max_rate
   }],
-  amenities: [(hotel)-[:OFFERS_AMENITY]->(amenity:Amenity) | amenity.name],
-  policies: [(hotel)-[:HAS_POLICY]->(policy:Policy) | policy {
-    .name,
-    .description
-  }],
-  services: [(hotel)-[:PROVIDES_SERVICE]->(service:Service) | service {
-    .name,
-    .description,
-    .cost,
-    .hours,
-    .is_available,
-    .is_complimentary
-  }]
+  amenities: [(hotel)-[:OFFERS_AMENITY]->(amenity:Amenity)
+    WHERE $includeAmenities AND any(term IN $terms WHERE toLower(amenity.name) CONTAINS term)
+    | amenity.name],
+  policies: [(hotel)-[:HAS_POLICY]->(policy:Policy)
+    WHERE $includePolicies AND any(term IN $terms WHERE
+      toLower(coalesce(policy.name, "")) CONTAINS term OR
+      toLower(coalesce(policy.description, "")) CONTAINS term)
+    | policy { .name, .description }],
+  services: [(hotel)-[:PROVIDES_SERVICE]->(service:Service)
+    WHERE $includeServices AND any(term IN $terms WHERE
+      toLower(coalesce(service.name, "")) CONTAINS term OR
+      toLower(coalesce(service.description, "")) CONTAINS term)
+    | service {
+      .name,
+      .description,
+      .cost,
+      .hours,
+      .is_available,
+      .is_complimentary
+    }]
 } AS hotel
 `;
 
@@ -73,10 +81,21 @@ class Neo4jGraphStore implements GraphStore {
       .filter((hotel): hotel is HotelSummary => hotel !== null);
   }
 
-  async getFactSheet(name: string): Promise<FactSheet | null> {
-    const rows = await this.read(FACT_SHEET, { name });
-    const hotel = rows[0]?.hotel;
-    return normalizeFactSheet(hotel);
+  async getEvidence(name: string, focus: RetrievalFocus): Promise<Evidence | null> {
+    const rows = await this.read(EVIDENCE, {
+      name,
+      terms: focus.terms,
+      includeRooms: focus.includeRooms,
+      includeAddress: focus.includeAddress,
+      includeRating: focus.includeRating,
+      includeTotalRooms: focus.includeTotalRooms,
+      includeEmail: focus.includeEmail,
+      includePhone: focus.includePhone,
+      includeAmenities: focus.includeAmenities,
+      includePolicies: focus.includePolicies,
+      includeServices: focus.includeServices,
+    });
+    return shapeEvidence(rows[0]?.hotel, focus);
   }
 
   async close(): Promise<void> {
@@ -85,7 +104,7 @@ class Neo4jGraphStore implements GraphStore {
 
   private async read(
     cypher: string,
-    parameters: Record<string, string>,
+    parameters: Record<string, unknown>,
   ): Promise<Array<Record<string, unknown>>> {
     const session = this.driver.session({ database: this.database });
     try {

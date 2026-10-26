@@ -31,7 +31,7 @@ function section(title, lines) {
   heading.textContent = title;
   const list = document.createElement("ul");
   if (lines.length === 0) {
-    list.append(item("None stored"));
+    list.append(item("No matching records"));
   } else {
     for (const line of lines) list.append(item(line));
   }
@@ -97,33 +97,32 @@ function renderResult(payload) {
   const details = document.createElement("details");
   details.open = true;
   const summary = document.createElement("summary");
-  summary.textContent = "Facts sent to Jev";
+  summary.textContent = "Facts retrieved for this question";
   const facts = document.createElement("div");
   facts.className = "facts";
-  const sheet = payload.factSheet;
-  facts.append(
-    section(
-      "Hotel",
-      [
-        sheet.address,
-        sheet.guest_rating == null
-          ? null
-          : `Guest rating ${sheet.guest_rating}`,
-        sheet.total_rooms == null ? null : `${sheet.total_rooms} rooms`,
-        sheet.phone,
-        sheet.email,
-      ].filter(Boolean),
-    ),
-    section("Amenities", sheet.amenities),
-    section("Rooms", sheet.rooms.map(roomLine)),
-    section(
-      "Policies",
-      sheet.policies.map((policy) =>
-        [policy.name, policy.description].filter(Boolean).join(": "),
+  const sheet = payload.evidence;
+  const hotelLines = [
+    sheet.address,
+    sheet.guest_rating == null ? null : `Guest rating ${sheet.guest_rating}`,
+    sheet.total_rooms == null ? null : `${sheet.total_rooms} rooms`,
+    sheet.phone,
+    sheet.email,
+    sheet.guest_count == null ? null : `Guest count asked: ${sheet.guest_count}`,
+  ].filter(Boolean);
+  if (hotelLines.length > 0) facts.append(section("Hotel", hotelLines));
+  if (sheet.amenities) facts.append(section("Amenities", sheet.amenities));
+  if (sheet.rooms) facts.append(section("Rooms", sheet.rooms.map(roomLine)));
+  if (sheet.policies) {
+    facts.append(
+      section(
+        "Policies",
+        sheet.policies.map((policy) =>
+          [policy.name, policy.description].filter(Boolean).join(": "),
+        ),
       ),
-    ),
-    section("Services", sheet.services.map(serviceLine)),
-  );
+    );
+  }
+  if (sheet.services) facts.append(section("Services", sheet.services.map(serviceLine)));
   details.append(summary, facts);
   result.append(verdict, meta, asked, details);
 }

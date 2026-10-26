@@ -1,4 +1,5 @@
 import neo4j from "neo4j-driver";
+import { evidenceNote, type RetrievalFocus } from "./focus.js";
 
 export type HotelSummary = {
   name: string;
@@ -7,10 +8,10 @@ export type HotelSummary = {
 
 export type RoomFact = {
   type: string | null;
-  bed_configuration: string | null;
-  max_occupancy: number | null;
-  min_rate: number | null;
-  max_rate: number | null;
+  bed_configuration?: string | null;
+  max_occupancy?: number | null;
+  min_rate?: number | null;
+  max_rate?: number | null;
 };
 
 export type PolicyFact = {
@@ -40,8 +41,20 @@ export type FactSheet = {
   services: ServiceFact[];
 };
 
-export const RECORD_NOTE =
-  "The amenity names and the service records are the complete lists stored for this hotel. A facility or service that does not appear is not offered in this record. Each room's max_occupancy is the guest limit for that room. This record does not include live room availability.";
+export type Evidence = {
+  name: string;
+  note: string;
+  guest_count?: number;
+  address?: string | null;
+  guest_rating?: number | null;
+  total_rooms?: number | null;
+  email?: string | null;
+  phone?: string | null;
+  rooms?: RoomFact[];
+  amenities?: string[];
+  policies?: PolicyFact[];
+  services?: ServiceFact[];
+};
 
 export function asNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -85,24 +98,23 @@ export function normalizeFactSheet(raw: unknown): FactSheet | null {
   const name = asString(hotel?.name);
   if (!hotel || !name) return null;
 
-  const rooms = asList(hotel.rooms)
-    .map((room) => {
-      const record = asRecord(room);
-      if (!record) return null;
-      return {
-        type: asString(record.type),
-        bed_configuration: asString(record.bed_configuration),
-        max_occupancy: asNumber(record.max_occupancy),
-        min_rate: asNumber(record.min_rate),
-        max_rate: asNumber(record.max_rate),
-      };
-    })
-    .filter((room): room is RoomFact => room !== null)
-    .sort((left, right) =>
-      (left.type ?? "").localeCompare(right.type ?? "", undefined, {
-        sensitivity: "base",
-      }),
-    );
+  const rooms: RoomFact[] = [];
+  for (const room of asList(hotel.rooms)) {
+    const record = asRecord(room);
+    if (!record) continue;
+    rooms.push({
+      type: asString(record.type),
+      bed_configuration: asString(record.bed_configuration),
+      max_occupancy: asNumber(record.max_occupancy),
+      min_rate: asNumber(record.min_rate),
+      max_rate: asNumber(record.max_rate),
+    });
+  }
+  rooms.sort((left, right) =>
+    (left.type ?? "").localeCompare(right.type ?? "", undefined, {
+      sensitivity: "base",
+    }),
+  );
 
   const amenities = asList(hotel.amenities)
     .map((amenity) => asString(amenity))
@@ -151,6 +163,37 @@ export function normalizeFactSheet(raw: unknown): FactSheet | null {
     policies,
     services,
   };
+}
+
+function pickedRoom(room: RoomFact, focus: RetrievalFocus): RoomFact {
+  const picked: RoomFact = { type: room.type };
+  if (focus.includeBeds) picked.bed_configuration = room.bed_configuration ?? null;
+  if (focus.includeOccupancy) picked.max_occupancy = room.max_occupancy ?? null;
+  if (focus.includeRates) {
+    picked.min_rate = room.min_rate ?? null;
+    picked.max_rate = room.max_rate ?? null;
+  }
+  return picked;
+}
+
+export function shapeEvidence(raw: unknown, focus: RetrievalFocus): Evidence | null {
+  const hotel = normalizeFactSheet(raw);
+  if (!hotel) return null;
+  const evidence: Evidence = {
+    name: hotel.name,
+    note: evidenceNote(focus),
+  };
+  if (focus.guestCount != null) evidence.guest_count = focus.guestCount;
+  if (focus.includeAddress) evidence.address = hotel.address;
+  if (focus.includePhone) evidence.phone = hotel.phone;
+  if (focus.includeEmail) evidence.email = hotel.email;
+  if (focus.includeRating) evidence.guest_rating = hotel.guest_rating;
+  if (focus.includeTotalRooms) evidence.total_rooms = hotel.total_rooms;
+  if (focus.includeRooms) evidence.rooms = hotel.rooms.map((room) => pickedRoom(room, focus));
+  if (focus.includeAmenities) evidence.amenities = hotel.amenities;
+  if (focus.includeServices) evidence.services = hotel.services;
+  if (focus.includePolicies) evidence.policies = hotel.policies;
+  return evidence;
 }
 
 export function normalizeHotelSummary(raw: unknown): HotelSummary | null {

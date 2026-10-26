@@ -1,6 +1,7 @@
 import neo4j from "neo4j-driver";
 import { describe, expect, it } from "vitest";
-import { normalizeFactSheet, RECORD_NOTE } from "../src/facts.js";
+import { normalizeFactSheet, shapeEvidence } from "../src/facts.js";
+import { retrievalFocus } from "../src/focus.js";
 
 describe("normalizeFactSheet", () => {
   it("keeps a complete hotel record and sorts the lists", () => {
@@ -55,7 +56,37 @@ describe("normalizeFactSheet", () => {
       description: "No pets.",
     });
     expect(sheet?.services[0]?.name).toBe("Airport shuttle");
-    expect(RECORD_NOTE).toMatch(/complete lists/i);
+  });
+
+  it("keeps only the slice the question asked for", () => {
+    const raw = {
+      name: "AnyCompany Cairo Nile View",
+      address: "789 Corniche el-Nil, Cairo 11519, Egypt",
+      guest_rating: 4.5,
+      total_rooms: 250,
+      email: "cairo@anycompany.com",
+      phone: "+20-2-555-0001",
+      rooms: [{ type: "Suite", max_occupancy: 6, min_rate: 550, max_rate: 900 }],
+      amenities: ["Full-Service Spa"],
+      policies: [],
+      services: [],
+    };
+
+    const occupancy = shapeEvidence(raw, retrievalFocus("Does this hotel allow 5 guests?"));
+    expect(occupancy).toMatchObject({
+      name: "AnyCompany Cairo Nile View",
+      guest_count: 5,
+      rooms: [{ type: "Suite", max_occupancy: 6 }],
+    });
+    expect(occupancy).not.toHaveProperty("amenities");
+    expect(occupancy).not.toHaveProperty("policies");
+    expect(occupancy).not.toHaveProperty("services");
+    expect(occupancy?.rooms?.[0]).not.toHaveProperty("min_rate");
+
+    const facility = shapeEvidence(raw, retrievalFocus("Does this hotel have a spa?"));
+    expect(facility?.amenities).toEqual(["Full-Service Spa"]);
+    expect(facility).not.toHaveProperty("rooms");
+    expect(facility).not.toHaveProperty("address");
   });
 
   it("returns null when the hotel has no name", () => {

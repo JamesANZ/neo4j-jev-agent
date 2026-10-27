@@ -28,6 +28,15 @@ describe("retrievalFocus", () => {
     expect(retrievalFocus("Does this hotel have a pool?").terms).toContain("pool");
   });
 
+  it("drops catalog wording so a pool question searches for pool", () => {
+    expect(retrievalFocus("Which of the following hotels has a pool?").terms).toEqual([
+      "pool",
+    ]);
+    expect(retrievalFocus("Which Chicago hotel has a spa?").terms).toEqual(
+      expect.arrayContaining(["chicago", "spa"]),
+    );
+  });
+
   it("retrieves policies without the rest of the hotel", () => {
     const focus = retrievalFocus("Does this hotel have a cancellation policy?");
     expect(focus.kind).toBe("policy");

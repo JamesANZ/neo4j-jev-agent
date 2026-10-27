@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { askHotel, listHotels, type AskResult } from "./ask.js";
 import { loadConfig } from "./config.js";
 import { createGraphStore } from "./graph.js";
-import { TypeSafeJevJudge } from "./jev.js";
+import { TypeSafeJevJudge, type JevJudge } from "./jev.js";
 
 const publicDir = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -52,9 +52,9 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 export function createApp(deps: {
   graph: Pick<
     ReturnType<typeof createGraphStore>,
-    "listHotels" | "getEvidence"
+    "listHotels" | "getEvidence" | "searchHotels"
   >;
-  judge: TypeSafeJevJudge | { judge: TypeSafeJevJudge["judge"] };
+  judge: JevJudge;
 }) {
   return createServer(async (request, response) => {
     try {

@@ -73,7 +73,7 @@ function renderResult(payload) {
 
   const verdict = document.createElement("h2");
   verdict.className = `verdict ${payload.verdict}`;
-  verdict.textContent = VERDICT_LABELS[payload.verdict] ?? payload.verdict;
+  verdict.textContent = payload.answer || VERDICT_LABELS[payload.verdict] || payload.verdict;
 
   const meta = document.createElement("p");
   meta.className = "meta";
@@ -92,7 +92,9 @@ function renderResult(payload) {
 
   const asked = document.createElement("p");
   asked.className = "asked";
-  asked.textContent = `${payload.hotelName}: ${payload.question}`;
+  asked.textContent = payload.catalog
+    ? `${payload.question} — ${payload.catalog.matchCount} of ${payload.catalog.scopeCount} hotels`
+    : `${payload.hotelName}: ${payload.question}`;
 
   const details = document.createElement("details");
   details.open = true;
@@ -100,6 +102,33 @@ function renderResult(payload) {
   summary.textContent = "Facts retrieved for this question";
   const facts = document.createElement("div");
   facts.className = "facts";
+  if (payload.catalog) {
+    if (payload.catalog.hotels.length === 0) {
+      facts.append(section("Hotels", []));
+    }
+    for (const hotel of payload.catalog.hotels) {
+      const lines = [
+        hotel.address,
+        ...(hotel.amenities ?? []),
+        ...(hotel.rooms ?? []).map(roomLine),
+        ...(hotel.policies ?? []).map((policy) =>
+          [policy.name, policy.description].filter(Boolean).join(": "),
+        ),
+        ...(hotel.services ?? []).map(serviceLine),
+      ].filter(Boolean);
+      facts.append(section(hotel.name, lines));
+    }
+    if (payload.catalog.matchCount > payload.catalog.hotels.length) {
+      facts.append(
+        section("Also matched", [
+          `${payload.catalog.matchCount - payload.catalog.hotels.length} more hotels`,
+        ]),
+      );
+    }
+    details.append(summary, facts);
+    result.append(verdict, meta, asked, details);
+    return;
+  }
   const sheet = payload.evidence;
   const hotelLines = [
     sheet.address,
@@ -140,6 +169,10 @@ async function loadHotels() {
     placeholder.value = "";
     placeholder.textContent = "Select a hotel";
     hotelSelect.append(placeholder);
+    const allHotels = document.createElement("option");
+    allHotels.value = "__all__";
+    allHotels.textContent = "All hotels";
+    hotelSelect.append(allHotels);
     for (const hotel of body.hotels) {
       const option = document.createElement("option");
       option.value = hotel.name;

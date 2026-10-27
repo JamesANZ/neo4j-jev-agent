@@ -196,6 +196,94 @@ export function shapeEvidence(raw: unknown, focus: RetrievalFocus): Evidence | n
   return evidence;
 }
 
+export type CatalogSnippet = {
+  name: string;
+  address?: string | null;
+  amenities?: string[];
+  policies?: PolicyFact[];
+  services?: Array<Pick<ServiceFact, "name" | "description">>;
+  rooms?: Array<Pick<RoomFact, "type" | "max_occupancy">>;
+};
+
+export type CatalogEvidence = {
+  scopeCount: number;
+  matchCount: number;
+  hotels: CatalogSnippet[];
+};
+
+export const CATALOG_NOTE =
+  "hotels lists matching properties and only the amenity, policy, service, or room relationship that matched the question. match_count is the full number of matches. scope_count is how many hotels were searched. When question_kind is which, the listed hotels are the matches, including when match_count is below scope_count. When question_kind is all, yes requires match_count to equal scope_count and be greater than zero. An empty hotels list means none matched.";
+
+function compactStrings(values: unknown): string[] {
+  return asList(values)
+    .map((value) => asString(value))
+    .filter((value): value is string => value !== null)
+    .sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" }));
+}
+
+export function normalizeCatalog(raw: unknown): CatalogEvidence {
+  const record = asRecord(raw) ?? {};
+  const hotels = asList(record.hotels)
+    .map((hotel) => {
+      const item = asRecord(hotel);
+      const name = asString(item?.name);
+      if (!item || !name) return null;
+      const snippet: CatalogSnippet = { name };
+      const address = asString(item.address);
+      if (address) snippet.address = address;
+      const amenities = compactStrings(item.amenities);
+      if (amenities.length > 0) snippet.amenities = amenities;
+      const policies = asList(item.policies)
+        .map((policy) => {
+          const policyRecord = asRecord(policy);
+          if (!policyRecord) return null;
+          return {
+            name: asString(policyRecord.name),
+            description: asString(policyRecord.description),
+          };
+        })
+        .filter((policy): policy is PolicyFact => policy !== null);
+      if (policies.length > 0) snippet.policies = policies;
+      const services = asList(item.services)
+        .map((service) => {
+          const serviceRecord = asRecord(service);
+          const serviceName = asString(serviceRecord?.name);
+          if (!serviceName) return null;
+          return {
+            name: serviceName,
+            description: asString(serviceRecord?.description),
+          };
+        })
+        .filter(
+          (service): service is { name: string; description: string | null } =>
+            service !== null,
+        );
+      if (services.length > 0) snippet.services = services;
+      const rooms = asList(item.rooms)
+        .map((room) => {
+          const roomRecord = asRecord(room);
+          if (!roomRecord) return null;
+          return {
+            type: asString(roomRecord.type),
+            max_occupancy: asNumber(roomRecord.max_occupancy),
+          };
+        })
+        .filter(
+          (room): room is { type: string | null; max_occupancy: number | null } =>
+            room !== null,
+        );
+      if (rooms.length > 0) snippet.rooms = rooms;
+      return snippet;
+    })
+    .filter((hotel): hotel is CatalogSnippet => hotel !== null);
+
+  return {
+    scopeCount: asNumber(record.scopeCount) ?? 0,
+    matchCount: asNumber(record.matchCount) ?? hotels.length,
+    hotels,
+  };
+}
+
 export function normalizeHotelSummary(raw: unknown): HotelSummary | null {
   const record = asRecord(raw);
   const name = asString(record?.name);

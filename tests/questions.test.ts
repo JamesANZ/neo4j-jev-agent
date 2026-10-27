@@ -11,7 +11,10 @@ describe("questionRefusal", () => {
 
   it("refuses open questions and blank input", () => {
     expect(questionRefusal("")).toBe(YES_NO_REFUSAL);
-    expect(questionRefusal("Which Chicago hotel has a spa?")).toBe(
+    expect(questionRefusal("Which Chicago hotel has a spa?")).toBeNull();
+    expect(questionRefusal("Which of the following hotels has a pool?")).toBeNull();
+    expect(questionRefusal("Do all hotels have a pool?")).toBeNull();
+    expect(questionRefusal("Which amenities does this hotel have?")).toBe(
       YES_NO_REFUSAL,
     );
     expect(questionRefusal("What is the cancellation policy?")).toBe(

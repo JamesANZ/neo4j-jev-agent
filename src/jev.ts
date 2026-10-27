@@ -1,6 +1,6 @@
 import { choice, TypeSafeClient, TypeSafeError } from "@typesafe-ai/sdk";
 import type { AppConfig } from "./config.js";
-import type { Evidence } from "./facts.js";
+import { CATALOG_NOTE, type CatalogEvidence, type Evidence } from "./facts.js";
 
 export const REVIEW_CONFIDENCE = 0.6;
 
@@ -23,8 +23,22 @@ export type JevRequest = {
   state: JevState;
 };
 
+export type CatalogJevState = {
+  guest_question: string;
+  question_kind: "which" | "all";
+  note: string;
+  scope_count: number;
+  match_count: number;
+  hotels: CatalogEvidence["hotels"];
+};
+
+export type CatalogJevRequest = {
+  state: CatalogJevState;
+};
+
 export interface JevJudge {
   judge(request: JevRequest): Promise<Judgment>;
+  judgeCatalog(request: CatalogJevRequest): Promise<Judgment>;
 }
 
 const INSTRUCTIONS =
@@ -37,10 +51,35 @@ const CRITERIA = {
     "The question needs a fact that was not retrieved, including live room availability.",
 } as const;
 
+const CATALOG_INSTRUCTIONS =
+  "Using only the retrieved hotel snippets, what is the decision for the guest's question?";
+
+const CATALOG_CRITERIA = {
+  yes: "question_kind is which and at least one hotel snippet shows the requested amenity, service, policy, or room. Or question_kind is all, match_count equals scope_count, and match_count is greater than zero.",
+  no: "question_kind is which and hotels is empty. Or question_kind is all and match_count is not equal to scope_count.",
+  not_in_record:
+    "The snippets are a different kind of fact from the question, including live room availability.",
+} as const;
+
 export function jevState(question: string, hotel: Evidence): JevState {
   return {
     guest_question: question.trim(),
     hotel,
+  };
+}
+
+export function catalogState(
+  question: string,
+  kind: "which" | "all",
+  evidence: CatalogEvidence,
+): CatalogJevState {
+  return {
+    guest_question: question.trim(),
+    question_kind: kind,
+    note: CATALOG_NOTE,
+    scope_count: evidence.scopeCount,
+    match_count: evidence.matchCount,
+    hotels: evidence.hotels,
   };
 }
 
@@ -92,15 +131,42 @@ export class TypeSafeJevJudge implements JevJudge {
         response.model,
       );
     } catch (error) {
-      if (error instanceof MissingApiKeyError) throw error;
-      const message =
-        error instanceof TypeSafeError
-          ? error.message
-          : error instanceof Error
-            ? error.message
-            : "Jev request failed";
-      throw new Error(message);
+      throw this.failure(error);
     }
+  }
+
+  async judgeCatalog(request: CatalogJevRequest): Promise<Judgment> {
+    if (!this.config.typesafeApiKey) {
+      throw new MissingApiKeyError();
+    }
+    try {
+      const response = await this.client.systemOne({
+        model: this.config.jevModel,
+        state: request.state,
+        questions: {
+          answer: choice(CATALOG_INSTRUCTIONS, CATALOG_CRITERIA),
+        },
+      });
+      const answer = response.answers.answer;
+      return judgmentFromChoice(
+        answer.choice,
+        answer.confidence,
+        response.model,
+      );
+    } catch (error) {
+      throw this.failure(error);
+    }
+  }
+
+  private failure(error: unknown): Error {
+    if (error instanceof MissingApiKeyError) return error;
+    const message =
+      error instanceof TypeSafeError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : "Jev request failed";
+    return new Error(message);
   }
 }
 
